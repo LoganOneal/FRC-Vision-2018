@@ -927,7 +927,7 @@ class Beep(VPL):
             for center, radius in contours:
                 x = center[0]
 
-                if (x > ((np.size(image, 1)/2)-10) and x < ((np.size(image, 1)/2)+10)): 
+                if (x > ((np.size(image, 1)/2)-50) and x < ((np.size(image, 1)/2)+50)): 
 
                     if self.playstart < time.time() - self.lock_length:
                         play_obj = self.wave_lock.play()
@@ -942,26 +942,29 @@ class Beep(VPL):
         return image, data
 
 class DrawMeter(VPL):
+    '''
+
+    Draws a rectangle in the lower left hand corner and scales the x values of the center point. Similar to our previous implementation of light on the robot. 
+
+    '''
 
     def process(self, pipe, image, data):
         contours = data[self["key"]]
         h,w,bpp = np.shape(image)
         bar_width = 290
-        range_lower = int((w/2)-40)
-        range_upper = int((w/2)+40)
+        range_lower = int((w/2)-50)
+        range_upper = int((w/2)+50)
 
 
         for center, radius in contours:
             x = center[0]
-            print(range_lower)
             if x > range_lower and x < range_upper:
                 bar_color = (34,139,34)
             else:
                 bar_color = (0,0,255)
+                
 
             cv2.rectangle(image, (w-10,h-10), (w-300,h-50) , (0,255,255), cv2.FILLED)
-            print(int(((x/w)*bar_width)+340))
             cv2.rectangle(image,((int(((x/w)*bar_width)+330)),h-5), ((int(((x/w)*bar_width)+350)),h-55), bar_color, cv2.FILLED)
-            #cv2.rectangle(origin ,(int(x)-int(radius), int(y)+int(radius)),(int(x)+int(radius), int(y)-int(radius)),(0,255,0),3)
 
         return image, data

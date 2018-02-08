@@ -1,6 +1,7 @@
 import cv2
 import argparse
 import vpl
+from networktables import NetworkTables
 
 parser = argparse.ArgumentParser(description='Example webcam view for punkvision')
 
@@ -84,6 +85,13 @@ if not args.noshow:
     pipe.add_vpl(vpl.Display(title="footage from " + str(args.source)))
 if args.stream is not None:
     pipe.add_vpl(vpl.MJPGServer(port=args.stream))
+#server='roboRIO-3966-frc.local
+    NetworkTables.initialize(server='roborio-3966-FRC.local')
+    table = NetworkTables.getTable('CameraPublisher')
+    print('test')
+   # table.StartServer()
+
+    table.putString("PiCamera", "/CameraPublisher/PiCamera/streams=['mjpeg:http://10.39.66.73:5802/?action=stream'")
 
 
 try:

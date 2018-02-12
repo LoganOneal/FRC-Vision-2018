@@ -33,7 +33,9 @@ import simpleaudio as sa
 from http.server import BaseHTTPRequestHandler,HTTPServer
 from socketserver import ThreadingMixIn
 
-
+from networktables import NetworkTables
+import wpilib
+import re
 import cv2
 
 import numpy as np
@@ -375,6 +377,27 @@ class ForkVPL(VPL):
     def process(self, pipe, image, data):
         self.do_async(self["pipe"].process, (image.copy(), data.copy()))
         return image, data
+
+
+class ForkSyncVPL(VPL):
+    """
+
+    This is a control VPL, it forks and runs another Pipeline in another thread.
+
+    This is useful for things that publish to network tables, or look for different vision targets
+
+    Usage: ForkVPL(pipe=Pipeline(...))
+
+      * "pipe" = pipeline to run as a VPL
+
+    THIS ONLY RETURNS THE IMAGE PASSED TO IT
+
+    """
+
+    def process(self, pipe, image, data):
+        self["pipe"].process(image.copy(), data.copy())
+        return image, data
+        
 
 
 class VideoSource(VPL):
@@ -899,7 +922,7 @@ class Distance(VPL):
             contours = data[self["key"]]
             for center, radius in contours:
                distance = 5150/radius if radius != 0 else 0
-               cv2.putText(image, str(distance), (100,100), cv2.FONT_HERSHEY_PLAIN, 2,  (0,255,255));
+               cv2.putText(image, str(distance), (100,100), cv2.FONT_HERSHEY_PLAIN, 2,  (0,255,255))
 
         return image, data
 
@@ -966,5 +989,175 @@ class DrawMeter(VPL):
 
             cv2.rectangle(image, (w-10,h-10), (w-300,h-50) , (0,255,255), cv2.FILLED)
             cv2.rectangle(image,((int(((x/w)*bar_width)+330)),h-5), ((int(((x/w)*bar_width)+350)),h-55), bar_color, cv2.FILLED)
+
+        return image, data
+
+class CoolChannelOffset(VPL):
+
+    def process(self, pipe, image, data):
+        h, w, nch = image.shape
+        ch = cv2.split(image)
+        for i in range(nch):
+            xoff = 8 * i
+            yoff = 0
+            ch[i] = np.roll(np.roll(image[:,:,i], yoff, 0), xoff, 1)
+            #image[:,:,i] = np.roll(image[:,:,i], 10, 1)
+
+        image = cv2.merge(ch)
+
+        return image, data
+
+import math
+
+class Bleed(VPL):
+
+    def process(self, pipe, image, data):
+        N = self.get("N", 18)
+        if not hasattr(self, "buffer"):
+            self.buffer = []
+
+        self.buffer.insert(0, image.copy())
+
+        if len(self.buffer) >= N:
+            self.buffer = self.buffer[:N]
+
+        #a = [len(self.buffer) - i + N for i in range(0, len(self.buffer))]
+        a = [1.0 / (i + 1) for i in range(0, len(self.buffer))]
+
+        # normalize
+        a = [a[i] / sum(a) for i in range(len(a))]
+
+        image[:,:,:] = 0
+
+        for i in range(len(a)):
+            image = cv2.addWeighted(image, 1.0, self.buffer[i], a[i], 0)
+
+        return image, data
+
+
+class Pixelate(VPL):
+
+    def process(self, pipe, image, data):
+        N = self.get("N", 7.5)
+
+        h, w, d = image.shape
+
+        image = cv2.resize(image, (int(w // N), int(h // N)), interpolation=cv2.INTER_NEAREST)
+        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_NEAREST)
+
+        return image, data
+
+class Noise(VPL):
+
+    def process(self, pipe, image, data):
+        level = self.get("level", .125)
+
+        m = (100,100,100) 
+        s = (100,100,100)
+        noise = np.zeros_like(image)
+
+        image = cv2.addWeighted(image, 1 - level, cv2.randn(noise, m, s), level, 0)
+
+        return image, data
+
+
+class DetailEnhance(VPL):
+
+    def process(self, pipe, image, data):
+        image = cv2.detailEnhance(image, sigma_s=self.get("r", 10), sigma_r=self.get("s", .15))
+        return image, data
+
+
+class Cartoon(VPL):
+
+    def process(self, pipe, image, data):
+        down = self.get("down", 2)
+        bilateral = self.get("bilateral", 7)
+
+        for i in range(down):
+            image = cv2.pyrDown(image)
+
+        for i in range(bilateral):
+            image = cv2.bilateralFilter(image, d=9,
+                                    sigmaColor=9,
+                                    sigmaSpace=7)
+
+        for i in range(down):
+            image = cv2.pyrUp(image)
+
+        image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        image_blur = cv2.medianBlur(image_gray, 7)
+
+        image_edge = cv2.adaptiveThreshold(image_blur, 255,
+                                 cv2.ADAPTIVE_THRESH_MEAN_C,
+                                 cv2.THRESH_BINARY,
+                                 blockSize=9,
+                                 C=2)
+
+        image_edge = cv2.cvtColor(image_edge, cv2.COLOR_GRAY2RGB)
+        image_cartoon = cv2.bitwise_and(image, image_edge)
+
+        return image_cartoon, data
+
+class ShowGameInfo(VPL):
+
+    def __init__(self):
+            self.firstScroll = 0
+            self.secondScroll = -400
+
+    
+    def process(self, pipe, image, data):
+        
+
+
+        def getInfo():
+            # get alliance
+            getAlliance = wpilib.DriverStation.getInstance().getAlliance()
+            alliance = wpilib.DriverStation.Alliance(getAlliance)
+            
+            eventName = wpilib.DriverStation.getInstance().getEventName()
+            #self.matchType = wpilib.DriverStation.getInstance().getMatchType()
+            #Return the approximate match time.
+            matchTime = wpilib.DriverStation.getInstance().getMatchTime()
+            #is the robot autonomous? True or False
+            autonomous = wpilib.DriverStation.getInstance().isAutonomous()
+            # is FMS Connected? True or False
+            systemAttached = wpilib.DriverStation.getInstance().isFMSAttached()
+
+            return alliance, eventName, matchTime, autonomous, systemAttached
+
+        info = getInfo()
+
+        def drawInfo(image, info):
+
+            height, width, channels = image.shape
+
+            if self.firstScroll < width:
+                self.firstScroll = self.firstScroll + 1
+            else: 
+                self.firstScroll = -(width+250)
+            if self.secondScroll < width:
+                self.secondScroll = self.secondScroll + 1
+            elif self.firstScroll == width/2:
+                self.secondScroll = int((width/2.5)*-1)
+
+            #draw rectangle
+            cv2.rectangle(image, (0, height), (width,int(height-(height*.06))), (244,244,244), cv2.FILLED, lineType=8, shift=0)
+
+            print(width)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+
+            alliance = str(info[0])
+            eventName = str(info[1])
+            matchTime = str(info[2])
+            autonomous = str(info[3])
+            systemAttached = str(info[4])
+
+            cv2.putText(image, "Alliance: " + alliance + " Event Name: " + eventName + " Match Time: " + matchTime, (self.firstScroll,int(height-(height*.01))), font, 1, (0,0,255),2) 
+            cv2.putText(image, "L&N STEMpunks", (self.secondScroll,int(height-(height*.01))), font, 1, (0,0,255),2) 
+
+         
+
+        drawInfo(image, info)
 
         return image, data

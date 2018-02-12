@@ -2,6 +2,8 @@ import cv2
 import argparse
 import vpl
 from networktables import NetworkTables
+import socket
+
 
 parser = argparse.ArgumentParser(description='Example webcam view for punkvision')
 
@@ -20,8 +22,8 @@ parser.add_argument('--noprop', action='store_true', help="if this flag is set, 
 args = parser.parse_args()
 
 
-pipe = vpl.Pipeline("webcam")
-
+pipe = vpl.Pipeline("process")
+fork = vpl.Pipeline("record")
 cam_props = vpl.CameraProperties()
 
 # set preferred width and height
@@ -32,6 +34,11 @@ if not args.noprop:
 
 # find the source
 pipe.add_vpl(vpl.VideoSource(source=args.source, properties=cam_props))
+
+pipe.add_vpl(vpl.ForkSyncVPL(pipe=fork))
+fork.add_vpl(vpl.ShowGameInfo())
+
+
 
 # resize
 pipe.add_vpl(vpl.Resize(w=args.size[0], h=args.size[1]))
@@ -77,21 +84,27 @@ pipe.add_vpl(vpl.Distance(key="contours"))
 pipe.add_vpl(vpl.FPSCounter())
 
 #kill program
-pipe.add_vpl(vpl.KillSwitch())
+#pipe.add_vpl(vpl.KillSwitch())
+#fork.add_vpl(vpl.KillSwitch())
 
 
-# display it
+
+#stream it
 if not args.noshow:
     pipe.add_vpl(vpl.Display(title="footage from " + str(args.source)))
+    fork.add_vpl(vpl.Display(title="fork"))
 if args.stream is not None:
     pipe.add_vpl(vpl.MJPGServer(port=args.stream))
 #server='roboRIO-3966-frc.local
-    NetworkTables.initialize(server='roborio-3966-FRC.local')
-    table = NetworkTables.getTable('CameraPublisher')
-    print('test')
-   # table.StartServer()
 
-    table.putString("PiCamera", "/CameraPublisher/PiCamera/streams=['mjpeg:http://10.39.66.73:5802/?action=stream'")
+'''
+    NetworkTables.initialize(server='roborio-3966-FRC.local')
+    table = NetworkTables.getTable('CameraPublisher/PiCamera')
+    streamNames = ['mjpeg:http://10.39.66.201:5802/?action=stream']
+    table.putStringArray("streams", streamNames)
+'''
+
+    #table.putString("PiCamera", "/CameraPublisher/PiCamera/streams=['mjpeg:http://10.39.66.73:5802/?action=stream'")
 
 
 try:

@@ -83,6 +83,9 @@ pipe.add_vpl(vpl.Distance(key="contours"))
 # add a FPS counter
 pipe.add_vpl(vpl.FPSCounter())
 
+pipe.add_vpl(vpl.DumpInfo(key="contours"))
+
+
 #kill program
 #pipe.add_vpl(vpl.KillSwitch())
 #fork.add_vpl(vpl.KillSwitch())
@@ -94,18 +97,8 @@ if not args.noshow:
     pipe.add_vpl(vpl.Display(title="footage from " + str(args.source)))
     fork.add_vpl(vpl.Display(title="fork"))
 if args.stream is not None:
-    pipe.add_vpl(vpl.MJPGServer(port=args.stream))
+    fork.add_vpl(vpl.MJPGServer(port=args.stream))
 #server='roboRIO-3966-frc.local
-
-'''
-    NetworkTables.initialize(server='roborio-3966-FRC.local')
-    table = NetworkTables.getTable('CameraPublisher/PiCamera')
-    streamNames = ['mjpeg:http://10.39.66.201:5802/?action=stream']
-    table.putStringArray("streams", streamNames)
-'''
-
-    #table.putString("PiCamera", "/CameraPublisher/PiCamera/streams=['mjpeg:http://10.39.66.73:5802/?action=stream'")
-
 
 try:
       # we let our VideoSource do the processing, autolooping

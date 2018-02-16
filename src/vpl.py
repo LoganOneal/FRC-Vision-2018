@@ -22,6 +22,7 @@ can also find a copy at http://www.gnu.org/licenses/.
 
 
 from enum import Enum
+import enum
 import time
 import threading
 import math
@@ -1107,35 +1108,15 @@ class ShowGameInfo(VPL):
 
     
     def process(self, pipe, image, data):
-        
 
-
-        def getInfo():
-            # get alliance
-            getAlliance = wpilib.DriverStation.getInstance().getAlliance()
-            alliance = wpilib.DriverStation.Alliance(getAlliance)
-            
-            eventName = wpilib.DriverStation.getInstance().getEventName()
-            #self.matchType = wpilib.DriverStation.getInstance().getMatchType()
-            #Return the approximate match time.
-            matchTime = wpilib.DriverStation.getInstance().getMatchTime()
-            #is the robot autonomous? True or False
-            autonomous = wpilib.DriverStation.getInstance().isAutonomous()
-            # is FMS Connected? True or False
-            systemAttached = wpilib.DriverStation.getInstance().isFMSAttached()
-
-            return alliance, eventName, matchTime, autonomous, systemAttached
-
-        info = getInfo()
-
-        def drawInfo(image, info):
+        def drawInfo(image):
 
             height, width, channels = image.shape
 
             if self.firstScroll < width:
                 self.firstScroll = self.firstScroll + 1
             else: 
-                self.firstScroll = -(width+250)
+                self.firstScroll = -(width+1000)
             if self.secondScroll < width:
                 self.secondScroll = self.secondScroll + 1
             elif self.firstScroll == width/2:
@@ -1144,20 +1125,52 @@ class ShowGameInfo(VPL):
             #draw rectangle
             cv2.rectangle(image, (0, height), (width,int(height-(height*.06))), (244,244,244), cv2.FILLED, lineType=8, shift=0)
 
-            print(width)
             font = cv2.FONT_HERSHEY_SIMPLEX
 
-            alliance = str(info[0])
-            eventName = str(info[1])
-            matchTime = str(info[2])
-            autonomous = str(info[3])
-            systemAttached = str(info[4])
+            alliance = wpilib.DriverStation.getInstance().getAlliance()
+            eventName = eventName = wpilib.DriverStation.getInstance().getEventName()
+            matchTime = matchTime = wpilib.DriverStation.getInstance().getMatchTime()
+            autonomous = autonomous = wpilib.DriverStation.getInstance().isAutonomous()
+            systemAttached = systemAttached = wpilib.DriverStation.getInstance().isFMSAttached()
 
-            cv2.putText(image, "Alliance: " + alliance + " Event Name: " + eventName + " Match Time: " + matchTime, (self.firstScroll,int(height-(height*.01))), font, 1, (0,0,255),2) 
+            infoText = "Alliance: " + (str(alliance) + "Event Name: " +  str(eventName) + "Match Time: " + str(matchTime) + "Autonomous: " + str(autonomous) + "System Attached: " + str(systemAttached))
+
+            cv2.putText(image, infoText, (self.firstScroll,int(height-(height*.01))), font, 1, (0,0,255),2) 
             cv2.putText(image, "L&N STEMpunks", (self.secondScroll,int(height-(height*.01))), font, 1, (0,0,255),2) 
+            auto = True
+          #  if auto == True:
+                #cv2.putText(image, "Autonomous Period", ((0, -(height/6) ), ((width/5),-(height/5))), font, 1, (0,0,255),2) 
 
-         
+        drawInfo(image)
 
-        drawInfo(image, info)
+        return image, data
 
+class DumpInfo(VPL):
+
+    def write(self):
+        if len(self.contours) != 0:
+            for center, radius in self.contours:
+                x,y = center
+                print(center, radius)
+
+                self.smartdashboard.putNumber("Radius", radius)
+                self.smartdashboard.putNumber("centerX", x)
+                self.smartdashboard.putNumber("centerY", y)
+        else:
+            self.smartdashboard.putNumber("Radius", -1)
+            self.smartdashboard.putNumber("centerX", -1)
+            self.smartdashboard.putNumber("centerY", -1)
+
+
+    def process(self, pipe, image, data):
+        self.contours = data[self["key"]]
+        if not hasattr(self, "is_init"):
+            self.is_init = True
+
+            NetworkTables.initialize(server='roborio-3966-FRC.local')
+            self.smartdashboard = NetworkTables.getTable('SmartDashboard')
+
+        if not hasattr(self, "last_time") or time.time() - self.last_time > 1.0 / 24.0:
+            self.write()
+            self.last_time = time.time()
         return image, data
